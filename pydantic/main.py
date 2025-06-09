@@ -108,6 +108,23 @@ def _private_setattr_handler(model: BaseModel, name: str, val: Any) -> None:
         object.__setattr__(model, '__pydantic_private__', {})
     model.__pydantic_private__[name] = val  # pyright: ignore[reportOptionalSubscript]
 
+def _safe_eq(obj1: Any, obj2: Any, seen: set[tuple[int, int]]) -> bool:
+    if obj1 is obj2:
+        return True
+    key = (id(obj1), id(obj2))
+    if key in seen:
+        return True
+    seen.add(key)
+    if isinstance(obj1, dict) and isinstance(obj2, dict):
+        if obj1.keys() != obj2.keys():
+            return False
+        for key in obj1:
+            if not _safe_eq(obj1[key], obj2[key], seen):
+                return False
+        return True
+    if isinstance(obj1, BaseModel) and isinstance(obj2, BaseModel):
+        return _safe_eq(obj1.__dict__, obj2.__dict__, seen)
+    return obj1 == obj2
 
 _SIMPLE_SETATTR_HANDLERS: Mapping[str, Callable[[BaseModel, str, Any], None]] = {
     'model_field': _model_field_setattr_handler,
@@ -1129,9 +1146,8 @@ class BaseModel(metaclass=_model_construction.ModelMetaclass):
                 # We'll perform a fast check first, and fallback only when needed
                 # See GH-7444 and GH-7825 for rationale and a performance benchmark
 
-                # First, do the fast (and sometimes faulty) __dict__ comparison
-                if self.__dict__ == other.__dict__:
-                    # If the check above passes, then pydantic fields are equal, we can return early
+                # First, compare in a non faulty way using _safe_eq
+                if _safe_eq(self.__dict__, other.__dict__, seen=set()):
                     return True
 
                 # We don't want to trigger unnecessary costly filtering of __dict__ on all unequal objects, so we return
