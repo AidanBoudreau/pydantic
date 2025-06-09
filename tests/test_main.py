@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import platform
 import re
@@ -3623,3 +3624,15 @@ def test_replace() -> None:
 
     m = Model(x=1, y=2)
     assert replace(m, x=3) == Model(x=3, y=2)
+
+def test_recursive_comparison_RecursionError_10630():
+    class A(BaseModel):
+        a: A | None = None
+
+
+    a = A()
+    a.a = a
+    a2 = A()
+    a2.a = a2
+
+    assert a == a2
